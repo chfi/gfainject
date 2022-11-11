@@ -25,10 +25,20 @@ fn main() -> Result<()> {
     let mut seg_lens = Vec::new();
 
     let mut seg_id_range = (0usize, std::usize::MAX);
+    // dbg!();
 
     loop {
-        let len = gfa_reader.read_until(b'\n', &mut line_buf)?;
+        line_buf.clear();
+        
+        let len = gfa_reader.read_until(0xA, &mut line_buf)?;
+        if len == 0 {
+            break;
+        }
+        
         let line = &line_buf[..len];
+        let line_str = std::str::from_utf8(&line)?;
+        // println!("{line_str}");
+
         if !matches!(line.first(), Some(b'S')) {
             continue;
         }
@@ -55,19 +65,30 @@ fn main() -> Result<()> {
 
     assert!(
         seg_id_range.1 - seg_id_range.0 == seg_lens.len(),
-        "GFA segments must be tightly packed"
+        "GFA segments must be tightly packed: min ID {}, max ID {}, node count {}",
+        seg_id_range.0, seg_id_range.1, seg_lens.len()
     );
+    
+    let gfa = std::fs::File::open(&args.gfa)?;
+    let mut gfa_reader = BufReader::new(gfa);
 
     let mut path_names = Vec::new();
     let mut path_steps: Vec<u32> = Vec::new();
     let mut path_pos: Vec<usize> = Vec::new();
 
     loop {
+        line_buf.clear();
+
         let len = gfa_reader.read_until(b'\n', &mut line_buf)?;
+        if len == 0 {
+            break;
+        }
+
         let line = &line_buf[..len];
         if !matches!(line.first(), Some(b'P')) {
             continue;
         }
+
         let mut fields = line.split(|&c| c == b'\t');
 
         let Some((name, steps)) = fields.next().and_then(|_type| {
