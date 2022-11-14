@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
 use std::{io::BufReader, path::PathBuf};
 
@@ -24,8 +24,6 @@ fn main() -> Result<()> {
         .map(sam::Reader::new)?;
 
     dbg!();
-    // sam.get_mut().
-    // let mut header = sam.get_mut().
 
 
     let header =  {
@@ -49,7 +47,35 @@ fn main() -> Result<()> {
 
         header.build()
     };
-    dbg!(header);
+    dbg!(&header);
+
+    let mut tag_counts: BTreeMap<[u8; 2], usize> = BTreeMap::new();
+    // let mut tags: BTreeMap<_, _> = BTreeMap::new();
+    // let mut tags: BTreeSet<_> = BTreeSet::new();
+
+
+    // NB: it seems like noodles only reads the first tag
+    let mut max_tag_count = 0;
+
+    for rec in sam.records(&header) {
+        let record = rec?;
+
+        max_tag_count = max_tag_count.max(record.data().len());
+        for tag in record.data().keys() {
+            *tag_counts.entry(*tag.as_ref()).or_default() += 1;
+        }
+    }
+
+    println!();
+
+    println!("tag   -   count");
+    for (tag, count) in tag_counts {
+        let tag = std::str::from_utf8(tag.as_slice())?;
+        println!("{tag} - {count}");
+    }
+
+    // this prints 1. lol. lmao.
+    println!("max tag count: {}", max_tag_count);
 
 
     Ok(())
