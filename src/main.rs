@@ -18,35 +18,39 @@ fn main() -> Result<()> {
 
     let args = parse_args()?;
 
+    dbg!();
     let mut sam = std::fs::File::open(&args.alignments)
         .map(BufReader::new)
         .map(sam::Reader::new)?;
 
-    let header: sam::Header = sam.read_header()?.parse()?;
-    // println!("");
-    for v in header.header() {
-        println!("header - {v:?}");
-    }
-    
-    println!();
-
-    println!("reference sequences")
-    for (k, v) in header.reference_sequences() {
-        println!("{k} - {v:?}");
-    }
+    dbg!();
+    // sam.get_mut().
+    // let mut header = sam.get_mut().
 
 
-    
+    let header =  {
+        // the noodles parse() impl demands that the @HD lines go first,
+        // but that's clearly not a guarantee i can enforce
+        let raw = sam.read_header()?;
+        let mut header = sam::Header::builder();
 
-    // let sam = std::fs::File::open(&args.alignments)?;
-    // let mut sam = BufReader::new(sam);
+        for line in raw.lines() {
+            use noodles::sam::header::Record as HRecord;
+            if let Ok(record) = line.parse::<HRecord>() {
+                header = match record {
+                    HRecord::Header(hd) => header.set_header(hd),
+                    HRecord::ReferenceSequence(sq) => header.add_reference_sequence(sq),
+                    HRecord::ReadGroup(rg) => header.add_read_group(rg),
+                    HRecord::Program(pg) => header.add_program(pg),
+                    HRecord::Comment(co) => header.add_comment(co),
+                };
+            }
+        }
 
-    // let mut line_buf: Vec<u8> = Vec::new();
+        header.build()
+    };
+    dbg!(header);
 
-    // loop {
-        // line_buf.clear();
-        // let bytes = sam.read_until(byte, buf)
-    // }
 
     Ok(())
 }
