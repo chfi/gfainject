@@ -14,6 +14,44 @@ struct PathIndex {
 }
 
 fn main() -> Result<()> {
+    use noodles::sam;
+
+    let args = parse_args()?;
+
+    let mut sam = std::fs::File::open(&args.alignments)
+        .map(BufReader::new)
+        .map(sam::Reader::new)?;
+
+    let header: sam::Header = sam.read_header()?.parse()?;
+    // println!("");
+    for v in header.header() {
+        println!("header - {v:?}");
+    }
+    
+    println!();
+
+    println!("reference sequences")
+    for (k, v) in header.reference_sequences() {
+        println!("{k} - {v:?}");
+    }
+
+
+    
+
+    // let sam = std::fs::File::open(&args.alignments)?;
+    // let mut sam = BufReader::new(sam);
+
+    // let mut line_buf: Vec<u8> = Vec::new();
+
+    // loop {
+        // line_buf.clear();
+        // let bytes = sam.read_until(byte, buf)
+    // }
+
+    Ok(())
+}
+
+fn actual_main() -> Result<()> {
     let args = parse_args()?;
 
     let gfa = std::fs::File::open(&args.gfa)?;
@@ -24,17 +62,17 @@ fn main() -> Result<()> {
     let mut name_map = BTreeMap::default();
     let mut seg_lens = Vec::new();
 
-    let mut seg_id_range = (0usize, std::usize::MAX);
+    let mut seg_id_range = (std::usize::MAX, 0usize);
     // dbg!();
 
     loop {
         line_buf.clear();
-        
+
         let len = gfa_reader.read_until(0xA, &mut line_buf)?;
         if len == 0 {
             break;
         }
-        
+
         let line = &line_buf[..len];
         let line_str = std::str::from_utf8(&line)?;
         // println!("{line_str}");
@@ -64,11 +102,12 @@ fn main() -> Result<()> {
     }
 
     assert!(
-        seg_id_range.1 - seg_id_range.0 == seg_lens.len(),
-        "GFA segments must be tightly packed: min ID {}, max ID {}, node count {}",
-        seg_id_range.0, seg_id_range.1, seg_lens.len()
+        seg_id_range.1 - seg_id_range.0 == seg_lens.len() - 1,
+        "GFA segments must be tightly packed: min ID {}, max ID {}, node count {}, was {}",
+        seg_id_range.0, seg_id_range.1, seg_lens.len(),
+        seg_id_range.1 - seg_id_range.0,
     );
-    
+
     let gfa = std::fs::File::open(&args.gfa)?;
     let mut gfa_reader = BufReader::new(gfa);
 
@@ -112,6 +151,7 @@ fn main() -> Result<()> {
                 break;
             };
 
+            dbg!(p);
             let seg = &steps[step_str_pos..p - 1];
             let orient = &steps[p - 1];
 
