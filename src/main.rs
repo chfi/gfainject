@@ -13,10 +13,13 @@ struct PathIndex {
     path_names: Vec<String>,
 }
 
-fn main() -> Result<()> {
+fn bam_main() -> Result<()> {
     use noodles::bam;
 
-    let args = parse_args()?;
+    let Ok(args) = parse_args() else {
+        println!("USAGE: `gfa-injection --gfa <gfa-path> --bam <bam-path>`");
+        return Ok(());
+    };
 
     let mut bam =
         std::fs::File::open(&args.alignments).map(bam::Reader::new)?;
@@ -176,7 +179,10 @@ fn sam_main() -> Result<()> {
     Ok(())
 }
 
-fn actual_main() -> Result<()> {
+
+
+
+fn main() -> Result<()> {
     let args = parse_args()?;
 
     let gfa = std::fs::File::open(&args.gfa)?;
@@ -237,8 +243,9 @@ fn actual_main() -> Result<()> {
     let mut gfa_reader = BufReader::new(gfa);
 
     let mut path_names = Vec::new();
-    let mut path_steps: Vec<u32> = Vec::new();
-    let mut path_pos: Vec<usize> = Vec::new();
+
+    let mut path_steps: Vec<Vec<u32>> = Vec::new();
+    let mut path_pos: Vec<Vec<usize>> = Vec::new();
 
     loop {
         line_buf.clear();
@@ -269,6 +276,9 @@ fn actual_main() -> Result<()> {
         let mut pos = 0;
         let mut step_str_pos = 0;
 
+        let mut parsed_steps = Vec::new();
+        let mut offsets = Vec::new();
+
         loop {
             // i bet the steps range bit *might* crash
             let Some(p) = memchr::memchr(b',', &steps[step_str_pos..])
@@ -276,28 +286,38 @@ fn actual_main() -> Result<()> {
                 break;
             };
 
-            dbg!(p);
-            let seg = &steps[step_str_pos..p - 1];
-            let orient = &steps[p - 1];
+            let start = step_str_pos;
+            let end = step_str_pos + p;
 
+            let string = std::str::from_utf8(&steps[start..end]).unwrap();
+            let seg = &steps[start..end];
+            let is_rev = seg.last().copied() == Some(b'-');
+
+            let seg = &seg[..seg.len() - 1];
             let seg_ix = btoi::btou::<usize>(seg)? - seg_id_range.0;
             let len = seg_lens[seg_ix];
 
-            pos += len;
+            parsed_steps.push(seg_ix as u32);
+            offsets.push(pos);
 
-            step_str_pos = p;
+            pos += len;
+            step_str_pos = end + 1;
         }
+
+        path_steps.push(parsed_steps);
+        path_pos.push(offsets);
     }
 
     Ok(())
 }
+
 
 fn parse_args() -> std::result::Result<Args, pico_args::Error> {
     let mut pargs = pico_args::Arguments::from_env();
 
     let args = Args {
         gfa: pargs.value_from_os_str("--gfa", parse_path)?,
-        alignments: pargs.value_from_os_str("--sam", parse_path)?,
+        alignments: pargs.value_from_os_str("--bam", parse_path)?,
     };
 
     Ok(args)
