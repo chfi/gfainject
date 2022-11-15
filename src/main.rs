@@ -1,4 +1,5 @@
 use anyhow::Result;
+use roaring::RoaringBitmap;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
 use std::{io::BufReader, path::PathBuf};
@@ -10,9 +11,11 @@ struct Args {
 }
 
 struct PathIndex {
-    path_names: Vec<String>,
+    path_names: BTreeMap<String, usize>,
+    // path_names: Vec<String>,
     path_steps: Vec<Vec<u32>>,
-    path_step_offsets: Vec<Vec<usize>>,
+    // path_step_offsets: Vec<Vec<usize>>,
+    path_step_offsets: Vec<roaring::RoaringBitmap>,
 }
 
 impl PathIndex {
@@ -69,15 +72,16 @@ impl PathIndex {
         "GFA segments must be tightly packed: min ID {}, max ID {}, node count {}, was {}",
         seg_id_range.0, seg_id_range.1, seg_lens.len(),
         seg_id_range.1 - seg_id_range.0,
-    );
+        );
 
         let gfa = std::fs::File::open(&gfa_path)?;
         let mut gfa_reader = BufReader::new(gfa);
 
-        let mut path_names = Vec::new();
+        let mut path_names = BTreeMap::default();
 
         let mut path_steps: Vec<Vec<u32>> = Vec::new();
-        let mut path_pos: Vec<Vec<usize>> = Vec::new();
+        let mut path_step_offsets: Vec<RoaringBitmap> = Vec::new();
+        // let mut path_pos: Vec<Vec<usize>> = Vec::new();
 
         loop {
             line_buf.clear();
@@ -95,28 +99,28 @@ impl PathIndex {
             let mut fields = line.split(|&c| c == b'\t');
 
             let Some((name, steps)) = fields.next().and_then(|_type| {
-            let name = fields.next()?;
-            let steps = fields.next()?;
-            Some((name, steps))
-        }) else {
-            continue;
-        };
+                let name = fields.next()?;
+                let steps = fields.next()?;
+                Some((name, steps))
+            }) else {
+                continue;
+            };
 
             let name = std::str::from_utf8(name)?;
-            path_names.push(name.to_string());
+            path_names.insert(name.to_string(), path_steps.len());
 
             let mut pos = 0;
             let mut step_str_pos = 0;
 
             let mut parsed_steps = Vec::new();
-            let mut offsets = Vec::new();
+
+            let mut offsets = RoaringBitmap::new();
 
             loop {
-                // i bet the steps range bit *might* crash
                 let Some(p) = memchr::memchr(b',', &steps[step_str_pos..])
-            else {
-                break;
-            };
+                else {
+                    break;
+                };
 
                 let start = step_str_pos;
                 let end = step_str_pos + p;
@@ -130,24 +134,23 @@ impl PathIndex {
                 let len = seg_lens[seg_ix];
 
                 parsed_steps.push(seg_ix as u32);
-                offsets.push(pos);
+                offsets.push(pos as u32);
 
                 pos += len;
                 step_str_pos = end + 1;
             }
 
             path_steps.push(parsed_steps);
-            path_pos.push(offsets);
+            path_step_offsets.push(offsets);
         }
 
         Ok(Self {
             path_names,
             path_steps,
-            path_step_offsets: path_pos,
+            path_step_offsets,
         })
     }
 }
-
 
 fn main() -> Result<()> {
     use noodles::bam;
@@ -186,17 +189,8 @@ fn main() -> Result<()> {
 
         header.build()
     };
-    bam.read_reference_sequences()?;
 
-    // for result in bam.records() {
-    // let record = result?;
-    // println!("{:?}", record);
-    // }
-
-    println!();
-
-    let mut max_tag_count = 0;
-    let mut tag_counts: BTreeMap<[u8; 2], usize> = BTreeMap::new();
+    let ref_seqs = bam.read_reference_sequences()?;
 
     let m150 = {
         use cigar::{op::Kind, Op};
@@ -207,18 +201,37 @@ fn main() -> Result<()> {
     for rec in bam.records() {
         let record = rec?;
 
-        max_tag_count = max_tag_count.max(record.data().len());
-        for tag in record.data().keys() {
-            *tag_counts.entry(*tag.as_ref()).or_default() += 1;
-        }
+        // let Some(read_name) = record.read_name() else {
+        // continue;
+        // };
 
-        use cigar::{op::Kind, Op};
-        use noodles::sam::record::{cigar, Cigar};
-        let cigar: &Cigar = record.cigar();
-        if cigar.as_ref() != m150.as_ref() {
-            let string = format!("{cigar}");
-            println!("{string}");
-        }
+        // let name = read_name.to_string();
+        // dbg!(&name);
+        // let name = std::str::from_utf8(read_name.to_)?;
+
+        let Some(ref_name) = record.reference_sequence(&header).and_then(|s| s.ok().map(|s| s.name())) else {
+            continue;
+        };
+
+        let Some(path_id) = path_index.path_names.get(ref_name.as_str()).copied() else {
+            continue;
+        };
+
+        // 1-based
+        let start = record.alignment_start().unwrap();
+        // let al_len = record.alignment_span();
+
+        let offset_map = &path_index.path_step_offsets[path_id];
+        let steps = &path_index.path_steps[path_id];
+
+        // find start of alignment
+        let ix = offset_map.rank(start.get() as u32 - 1);
+        // println!("{ix}");
+
+        let seg = steps[ix as usize];
+        println!("{}", seg + 1);
+
+
     }
 
     Ok(())
