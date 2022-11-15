@@ -14,6 +14,102 @@ struct PathIndex {
 }
 
 fn main() -> Result<()> {
+    use noodles::bam;
+
+    let args = parse_args()?;
+
+    let mut bam =
+        std::fs::File::open(&args.alignments).map(bam::Reader::new)?;
+
+    let header = {
+        use noodles::sam;
+        // the noodles parse() impl demands that the @HD lines go first,
+        // but that's clearly not a guarantee i can enforce
+        let raw = bam.read_header()?;
+        let mut header = sam::Header::builder();
+
+        for line in raw.lines() {
+            use noodles::sam::header::Record as HRecord;
+            if let Ok(record) = line.parse::<HRecord>() {
+                header = match record {
+                    HRecord::Header(hd) => header.set_header(hd),
+                    HRecord::ReferenceSequence(sq) => {
+                        header.add_reference_sequence(sq)
+                    }
+                    HRecord::ReadGroup(rg) => header.add_read_group(rg),
+                    HRecord::Program(pg) => header.add_program(pg),
+                    HRecord::Comment(co) => header.add_comment(co),
+                };
+            }
+        }
+
+        header.build()
+    };
+    bam.read_reference_sequences()?;
+
+    // for result in bam.records() {
+    // let record = result?;
+    // println!("{:?}", record);
+    // }
+
+    println!();
+
+    let mut max_tag_count = 0;
+    let mut tag_counts: BTreeMap<[u8; 2], usize> = BTreeMap::new();
+
+    let m150 = {
+        use cigar::{op::Kind, Op};
+        use noodles::sam::record::{cigar, Cigar};
+        Cigar::try_from(vec![Op::new(Kind::Match, 150)])?
+    };
+
+    for rec in bam.records() {
+        let record = rec?;
+
+        max_tag_count = max_tag_count.max(record.data().len());
+        for tag in record.data().keys() {
+            *tag_counts.entry(*tag.as_ref()).or_default() += 1;
+        }
+
+        use cigar::{op::Kind, Op};
+        use noodles::sam::record::{cigar, Cigar};
+        let cigar: &Cigar = record.cigar();
+        if cigar.as_ref() != m150.as_ref() {
+            // if cigar.as_ref() != &[Op::new(Kind::Match, 150)] {
+            let string = format!("{cigar}");
+            // if string.len() != 4 {
+                println!("{string}");
+            // }
+
+            //
+            // } else {
+            // println!("{cigar}");
+        }
+        // print!("{cigar:?}");
+    }
+    
+
+    /*
+    // prints 5 for a bam version of the same file that returned 1 for the below
+    println!("max tag count: {max_tag_count}");
+
+    for (name, sq) in header.reference_sequences() {
+        println!("{name} - {}", sq.length());
+    }
+
+    println!();
+
+    println!("tag   -   count");
+    for (tag, count) in tag_counts {
+        let tag = std::str::from_utf8(tag.as_slice())?;
+        println!("{tag} - {count}");
+    }
+    */
+
+    Ok(())
+}
+
+fn sam_main() -> Result<()> {
     use noodles::sam;
 
     let args = parse_args()?;
@@ -25,8 +121,7 @@ fn main() -> Result<()> {
 
     dbg!();
 
-
-    let header =  {
+    let header = {
         // the noodles parse() impl demands that the @HD lines go first,
         // but that's clearly not a guarantee i can enforce
         let raw = sam.read_header()?;
@@ -37,7 +132,9 @@ fn main() -> Result<()> {
             if let Ok(record) = line.parse::<HRecord>() {
                 header = match record {
                     HRecord::Header(hd) => header.set_header(hd),
-                    HRecord::ReferenceSequence(sq) => header.add_reference_sequence(sq),
+                    HRecord::ReferenceSequence(sq) => {
+                        header.add_reference_sequence(sq)
+                    }
                     HRecord::ReadGroup(rg) => header.add_read_group(rg),
                     HRecord::Program(pg) => header.add_program(pg),
                     HRecord::Comment(co) => header.add_comment(co),
@@ -52,7 +149,6 @@ fn main() -> Result<()> {
     let mut tag_counts: BTreeMap<[u8; 2], usize> = BTreeMap::new();
     // let mut tags: BTreeMap<_, _> = BTreeMap::new();
     // let mut tags: BTreeSet<_> = BTreeSet::new();
-
 
     // NB: it seems like noodles only reads the first tag
     let mut max_tag_count = 0;
@@ -76,7 +172,6 @@ fn main() -> Result<()> {
 
     // this prints 1. lol. lmao.
     println!("max tag count: {}", max_tag_count);
-
 
     Ok(())
 }
