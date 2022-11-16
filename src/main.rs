@@ -31,6 +31,9 @@ struct PathStepRangeIter<'a> {
     // start_pos: usize,
     // end_pos: usize,
     steps: Box<dyn Iterator<Item = (usize, &'a PathStep)> + 'a>,
+
+    first_step_start_pos: u32,
+    last_step_end_pos: u32,
 }
 
 impl<'a> Iterator for PathStepRangeIter<'a> {
@@ -55,6 +58,12 @@ impl PathIndex {
         let start_ix = offsets.rank(start);
         let step_count = offsets.range_cardinality(start..end);
 
+        let first_step_start_pos =
+            offsets.select(start_ix as u32).unwrap_or(start);
+        let last_step_end_pos = offsets
+            .select((start_ix + step_count + 1) as u32)
+            .unwrap_or(end);
+
         let steps = {
             let path_steps = self.path_steps.get(path_id)?;
             let iter = path_steps
@@ -72,6 +81,8 @@ impl PathIndex {
             path_id,
             pos_range,
             steps,
+            first_step_start_pos,
+            last_step_end_pos,
         })
     }
 
@@ -262,9 +273,9 @@ fn main() -> Result<()> {
     for rec in bam.records() {
         let record = rec?;
 
-        // let Some(read_name) = record.read_name() else {
-        // continue;
-        // };
+        let Some(read_name) = record.read_name() else {
+            continue;
+        };
 
         // let name = read_name.to_string();
         // dbg!(&name);
@@ -281,18 +292,50 @@ fn main() -> Result<()> {
         // 1-based
         let start = record.alignment_start().unwrap();
         let end = record.alignment_end().unwrap();
-        // let al_len = record.alignment_span();
+        let al_len = record.alignment_span();
+        // let al_len = end.get() - start.get();
 
-        let offset_map = &path_index.path_step_offsets[path_id];
-        let steps = &path_index.path_steps[path_id];
+        let pos_range = (start.get() as u32)..(end.get() as u32);
+        if let Some(steps) =
+            path_index.path_step_range_iter(ref_name.as_str(), pos_range)
+        {
+            let steps = steps.collect::<Vec<_>>();
+
+            let mut path_len = 0;
+            // let path_start =
+
+            // query name
+            print!("{}\t", read_name);
+            // query len
+            print!("{}\t", al_len);
+            // query start (0-based, closed)
+            print!("{}\t", start.get());
+            // query end (0-based, open)
+            print!("{}\t", end.get() + 1);
+            // strand
+            print!("{}\t", "+");
+            // path
+            print!("{}\t", ref_name);
+            // path length
+            // start on path
+            // end on path
+            // number of matches
+            // alignment block length
+            // mapping quality
+            println!();
+        } else {
+        }
+
+        // let offset_map = &path_index.path_step_offsets[path_id];
+        // let steps = &path_index.path_steps[path_id];
 
         // find start of alignment
-        let start_ix = offset_map.rank(start.get() as u32 - 1);
-        let end_ix = offset_map.rank(end.get() as u32 + 1);
+        // let start_ix = offset_map.rank(start.get() as u32 - 1);
+        // let end_ix = offset_map.rank(end.get() as u32 + 1);
 
-        println!("{start}:{end}");
-        println!("{start_ix} - {end_ix}: {} steps", end_ix - start_ix);
-        println!("first step: {:?}", steps[start_ix as usize]);
+        // println!("{start}:{end}");
+        // println!("{start_ix} - {end_ix}: {} steps", end_ix - start_ix);
+        // println!("first step: {:?}", steps[start_ix as usize]);
     }
 
     Ok(())
