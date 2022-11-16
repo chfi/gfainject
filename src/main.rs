@@ -10,15 +10,71 @@ struct Args {
     alignments: PathBuf,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct PathStep {
+    node: u32,
+    reverse: bool,
+}
+
 struct PathIndex {
     path_names: BTreeMap<String, usize>,
     // path_names: Vec<String>,
-    path_steps: Vec<Vec<u32>>,
+    path_steps: Vec<Vec<PathStep>>,
+
     // path_step_offsets: Vec<Vec<usize>>,
     path_step_offsets: Vec<roaring::RoaringBitmap>,
 }
 
+struct PathStepRangeIter<'a> {
+    path_id: usize,
+    pos_range: std::ops::Range<u32>,
+    // start_pos: usize,
+    // end_pos: usize,
+    steps: Box<dyn Iterator<Item = (usize, &'a PathStep)> + 'a>,
+}
+
+impl<'a> Iterator for PathStepRangeIter<'a> {
+    type Item = (usize, &'a PathStep);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.steps.next()
+    }
+}
+
 impl PathIndex {
+    fn path_step_range_iter<'a>(
+        &'a self,
+        path_name: &str,
+        pos_range: std::ops::Range<u32>,
+    ) -> Option<PathStepRangeIter<'a>> {
+        let path_id = *self.path_names.get(path_name)?;
+        let offsets = self.path_step_offsets.get(path_id)?;
+
+        let start = pos_range.start;
+        let end = pos_range.end;
+        let start_ix = offsets.rank(start);
+        let step_count = offsets.range_cardinality(start..end);
+
+        let steps = {
+            let path_steps = self.path_steps.get(path_id)?;
+            let iter = path_steps
+                .iter()
+                .skip(start_ix as usize)
+                .take(step_count as usize)
+                .enumerate()
+                .map(move |(ix, step)| (start_ix as usize + ix, step))
+                .fuse();
+
+            Box::new(iter) as Box<dyn Iterator<Item = _>>
+        };
+
+        Some(PathStepRangeIter {
+            path_id,
+            pos_range,
+            steps,
+        })
+    }
+
     fn from_gfa(gfa_path: impl AsRef<std::path::Path>) -> Result<Self> {
         let gfa = std::fs::File::open(&gfa_path)?;
         let mut gfa_reader = BufReader::new(gfa);
@@ -79,7 +135,7 @@ impl PathIndex {
 
         let mut path_names = BTreeMap::default();
 
-        let mut path_steps: Vec<Vec<u32>> = Vec::new();
+        let mut path_steps: Vec<Vec<PathStep>> = Vec::new();
         let mut path_step_offsets: Vec<RoaringBitmap> = Vec::new();
         // let mut path_pos: Vec<Vec<usize>> = Vec::new();
 
@@ -133,7 +189,12 @@ impl PathIndex {
                 let seg_ix = btoi::btou::<usize>(seg)? - seg_id_range.0;
                 let len = seg_lens[seg_ix];
 
-                parsed_steps.push(seg_ix as u32);
+                let step = PathStep {
+                    node: seg_ix as u32,
+                    reverse: is_rev,
+                };
+                parsed_steps.push(step);
+                // parsed_steps.push(seg_ix as u32);
                 offsets.push(pos as u32);
 
                 pos += len;
@@ -219,19 +280,19 @@ fn main() -> Result<()> {
 
         // 1-based
         let start = record.alignment_start().unwrap();
+        let end = record.alignment_end().unwrap();
         // let al_len = record.alignment_span();
 
         let offset_map = &path_index.path_step_offsets[path_id];
         let steps = &path_index.path_steps[path_id];
 
         // find start of alignment
-        let ix = offset_map.rank(start.get() as u32 - 1);
-        // println!("{ix}");
+        let start_ix = offset_map.rank(start.get() as u32 - 1);
+        let end_ix = offset_map.rank(end.get() as u32 + 1);
 
-        let seg = steps[ix as usize];
-        println!("{}", seg + 1);
-
-
+        println!("{start}:{end}");
+        println!("{start_ix} - {end_ix}: {} steps", end_ix - start_ix);
+        println!("first step: {:?}", steps[start_ix as usize]);
     }
 
     Ok(())
