@@ -17,6 +17,9 @@ struct PathStep {
 }
 
 struct PathIndex {
+    segment_id_range: (usize, usize),
+    segment_lens: Vec<usize>,
+
     path_names: BTreeMap<String, usize>,
     // path_names: Vec<String>,
     path_steps: Vec<Vec<PathStep>>,
@@ -63,6 +66,8 @@ impl PathIndex {
         let last_step_end_pos = offsets
             .select((start_ix + step_count + 1) as u32)
             .unwrap_or(end);
+
+        // println!("wow! {}", last_step_end_pos - first_step_start_pos);
 
         let steps = {
             let path_steps = self.path_steps.get(path_id)?;
@@ -220,6 +225,9 @@ impl PathIndex {
             path_names,
             path_steps,
             path_step_offsets,
+
+            segment_id_range: seg_id_range,
+            segment_lens: seg_lens,
         })
     }
 }
@@ -299,24 +307,50 @@ fn main() -> Result<()> {
         if let Some(steps) =
             path_index.path_step_range_iter(ref_name.as_str(), pos_range)
         {
-            let steps = steps.collect::<Vec<_>>();
-
             let mut path_len = 0;
-            // let path_start =
+            let mut path_str = String::new();
+
+            let path_start = steps.first_step_start_pos;
+            let path_end = steps.last_step_end_pos;
+
+            let steps = steps.collect::<Vec<_>>();
+            let step_count = steps.len();
+
+            for &(step_ix, step) in &steps {
+                use std::fmt::Write;
+                if step.reverse {
+                    write!(&mut path_str, ">")?;
+                } else {
+                    write!(&mut path_str, "<")?;
+                }
+                path_len += path_index.segment_lens[step.node as usize];
+                write!(
+                    &mut path_str,
+                    "{}",
+                    step.node + path_index.segment_id_range.0 as u32
+                )?;
+            }
 
             // query name
             print!("{}\t", read_name);
             // query len
             print!("{}\t", al_len);
             // query start (0-based, closed)
-            print!("{}\t", start.get());
+            print!("0\t");
+            // print!("{}\t", start.get());
             // query end (0-based, open)
-            print!("{}\t", end.get() + 1);
+            print!("{}\t", al_len);
+            // print!("{}\t", end.get() + 1);
             // strand
-            print!("{}\t", "+");
+            if record.flags().is_reverse_complemented() {
+                print!("-\t");
+            } else {
+                print!("+\t");
+            }
             // path
-            print!("{}\t", ref_name);
+            print!("{path_str}\t");
             // path length
+            print!("{path_len}\t");
             // start on path
             // end on path
             // number of matches
