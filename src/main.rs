@@ -34,9 +34,8 @@ struct PathStepRangeIter<'a> {
     // start_pos: usize,
     // end_pos: usize,
     steps: Box<dyn Iterator<Item = (usize, &'a PathStep)> + 'a>,
-
-    first_step_start_pos: u32,
-    last_step_end_pos: u32,
+    // first_step_start_pos: u32,
+    // last_step_end_pos: u32,
 }
 
 impl<'a> Iterator for PathStepRangeIter<'a> {
@@ -59,22 +58,25 @@ impl PathIndex {
         let start = pos_range.start;
         let end = pos_range.end;
         let start_ix = offsets.rank(start);
-        let step_count = offsets.range_cardinality(start..end);
+        let step_count = offsets.range_cardinality(start..=end);
+        let span = pos_range.end - pos_range.start;
+        println!("start: {start}\tend: {end}\tspan: {span}\tstep count: {step_count}");
 
-        let first_step_start_pos =
-            offsets.select(start_ix as u32).unwrap_or(start);
-        let last_step_end_pos = offsets
-            .select((start_ix + step_count + 1) as u32)
-            .unwrap_or(end);
+        // let first_step_start_pos =
+        //     offsets.select(start_ix as u32).unwrap_or(offsets.min().unwrap() as u32);
+        // let last_step_end_pos = offsets
+        //     .select((start_ix + step_count + 1) as u32)
+        //     .unwrap_or(offsets.max().unwrap() as u32 - 1);
 
-        // println!("wow! {}", last_step_end_pos - first_step_start_pos);
+        // print!("wow! {}", last_step_end_pos - first_step_start_pos);
+        // println!("\tbut {}", end - start);
 
         let steps = {
             let path_steps = self.path_steps.get(path_id)?;
             let iter = path_steps
                 .iter()
                 .skip(start_ix as usize)
-                .take(step_count as usize)
+                .take(1 + step_count as usize)
                 .enumerate()
                 .map(move |(ix, step)| (start_ix as usize + ix, step))
                 .fuse();
@@ -86,8 +88,8 @@ impl PathIndex {
             path_id,
             pos_range,
             steps,
-            first_step_start_pos,
-            last_step_end_pos,
+            // first_step_start_pos,
+            // last_step_end_pos,
         })
     }
 
@@ -303,15 +305,16 @@ fn main() -> Result<()> {
         let al_len = record.alignment_span();
         // let al_len = end.get() - start.get();
 
-        let pos_range = (start.get() as u32)..(end.get() as u32);
+        let pos_range = (start.get() as u32)..(1 + end.get() as u32);
         if let Some(steps) =
             path_index.path_step_range_iter(ref_name.as_str(), pos_range)
         {
             let mut path_len = 0;
             let mut path_str = String::new();
 
-            let path_start = steps.first_step_start_pos;
-            let path_end = steps.last_step_end_pos;
+            // let path_start = steps.first_step_start_pos;
+            // let path_end = steps.last_step_end_pos;
+            // println!("path_start: {path_start}\tpath_end: {path_end}")  ;
 
             let steps = steps.collect::<Vec<_>>();
             let step_count = steps.len();
@@ -330,6 +333,8 @@ fn main() -> Result<()> {
                     step.node + path_index.segment_id_range.0 as u32
                 )?;
             }
+
+            // let path_len_field = al_len;
 
             // query name
             print!("{}\t", read_name);
@@ -352,8 +357,25 @@ fn main() -> Result<()> {
             // path length
             print!("{path_len}\t");
             // start on path
+            let start = 0usize;
+            print!("{start}\t");
             // end on path
+            print!("{}\t", start + al_len);
             // number of matches
+            {
+                use noodles::sam::record::cigar::{op::Kind, Op};
+
+                fn match_len(op: &Op) -> usize {
+                    match op.kind() {
+                        Kind::Match
+                        | Kind::SequenceMatch
+                        | Kind::SequenceMismatch => op.len(),
+                        _ => 0,
+                    }
+                }
+                let matches = record.cigar().iter().map(match_len).sum::<usize>();
+                print!("{matches}\t");
+            }
             // alignment block length
             // mapping quality
             println!();
