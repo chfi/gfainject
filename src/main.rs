@@ -236,12 +236,12 @@ impl PathIndex {
     }
 }
 
-fn main() ->Result<()> {
+fn main() -> Result<()> {
     let Ok(args) = parse_args() else {
         println!("USAGE: `gfa-injection --gfa <gfa-path> --bam <bam-path>`");
         return Ok(());
     };
-    
+
     let path_index = PathIndex::from_gfa(&args.gfa)?;
 
     if let Some(bam_path) = args.alignments {
@@ -253,10 +253,39 @@ fn main() ->Result<()> {
     Ok(())
 }
 
-fn path_range_cmd(path_index: PathIndex, path: String, start: usize, end: usize) -> Result<()> {
+fn path_range_cmd(
+    path_index: PathIndex,
+    path_name: String,
+    start: usize,
+    end: usize,
+) -> Result<()> {
+    let path = path_index
+        .path_names
+        .get(&path_name)
+        .expect("Path not found");
+
+
+    let offsets = path_index.path_step_offsets.get(*path).unwrap();
+
+    let start_rank = offsets.rank(start as u32);
+    let end_rank = offsets.rank(end as u32);
+
+    let cardinality = offsets.range_cardinality((start as u32)..(end as u32));
+
+    println!("start_rank: {start_rank}");
+    println!("end_rank: {end_rank}");
+    println!("cardinality: {cardinality}");
+
+    println!("------");
+    let skip = (start_rank as usize).checked_sub(1).unwrap_or_default();
+    let take = end_rank as usize - skip;
+    for step in offsets.iter().skip(skip).take(take) {
+        println!("{step}");
+    }
+
+
     Ok(())
 }
-
 
 fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
     use noodles::bam;
@@ -266,8 +295,7 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         return Ok(());
     };
 
-    let mut bam = 
-        std::fs::File::open(&bam_path).map(bam::Reader::new)?;
+    let mut bam = std::fs::File::open(&bam_path).map(bam::Reader::new)?;
 
     let header = {
         use noodles::sam;
