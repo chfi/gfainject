@@ -7,7 +7,9 @@ use std::{io::BufReader, path::PathBuf};
 #[derive(Debug)]
 struct Args {
     gfa: PathBuf,
-    alignments: PathBuf,
+    alignments: Option<PathBuf>,
+
+    path_range: Option<(String, usize, usize)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -199,7 +201,7 @@ impl PathIndex {
                 let start = step_str_pos;
                 let end = step_str_pos + p;
 
-                let string = std::str::from_utf8(&steps[start..end]).unwrap();
+                // let string = std::str::from_utf8(&steps[start..end]).unwrap();
                 let seg = &steps[start..end];
                 let is_rev = seg.last().copied() == Some(b'-');
 
@@ -234,7 +236,29 @@ impl PathIndex {
     }
 }
 
-fn main() -> Result<()> {
+fn main() ->Result<()> {
+    let Ok(args) = parse_args() else {
+        println!("USAGE: `gfa-injection --gfa <gfa-path> --bam <bam-path>`");
+        return Ok(());
+    };
+    
+    let path_index = PathIndex::from_gfa(&args.gfa)?;
+
+    if let Some(bam_path) = args.alignments {
+        return main_cmd(path_index, bam_path);
+    } else if let Some((path, start, end)) = args.path_range {
+        return path_range_cmd(path_index, path, start, end);
+    }
+
+    Ok(())
+}
+
+fn path_range_cmd(path_index: PathIndex, path: String, start: usize, end: usize) -> Result<()> {
+    Ok(())
+}
+
+
+fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
     use noodles::bam;
 
     let Ok(args) = parse_args() else {
@@ -242,10 +266,8 @@ fn main() -> Result<()> {
         return Ok(());
     };
 
-    let path_index = PathIndex::from_gfa(&args.gfa)?;
-
-    let mut bam =
-        std::fs::File::open(&args.alignments).map(bam::Reader::new)?;
+    let mut bam = 
+        std::fs::File::open(&bam_path).map(bam::Reader::new)?;
 
     let header = {
         use noodles::sam;
@@ -318,6 +340,7 @@ fn main() -> Result<()> {
 
             let steps = steps.collect::<Vec<_>>();
             let step_count = steps.len();
+            dbg!(step_count);
 
             for &(step_ix, step) in &steps {
                 use std::fmt::Write;
@@ -373,7 +396,8 @@ fn main() -> Result<()> {
                         _ => 0,
                     }
                 }
-                let matches = record.cigar().iter().map(match_len).sum::<usize>();
+                let matches =
+                    record.cigar().iter().map(match_len).sum::<usize>();
                 print!("{matches}\t");
             }
             // alignment block length
@@ -400,9 +424,24 @@ fn main() -> Result<()> {
 fn parse_args() -> std::result::Result<Args, pico_args::Error> {
     let mut pargs = pico_args::Arguments::from_env();
 
+    let path_range = pargs.opt_value_from_str("--path").and_then(
+        |path: Option<String>| {
+            let start: Option<usize> = pargs.opt_value_from_str("--start")?;
+            let end: Option<usize> = pargs.opt_value_from_str("--end")?;
+            let path_range = path.and_then(|path| {
+                let path: String = path.into();
+                let start = start?;
+                let end = end?;
+                Some((path, start, end))
+            });
+            Ok(path_range)
+        },
+    )?;
+
     let args = Args {
         gfa: pargs.value_from_os_str("--gfa", parse_path)?,
-        alignments: pargs.value_from_os_str("--bam", parse_path)?,
+        alignments: pargs.opt_value_from_os_str("--bam", parse_path)?,
+        path_range,
     };
 
     Ok(args)
