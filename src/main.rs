@@ -378,13 +378,13 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             // query name
             print!("{}\t", read_name);
             // query len
-            print!("{}\t", al_len);
+            let query_len = record.cigar().read_length();
+            print!("{query_len}\t");
             // query start (0-based, closed)
-            print!("0\t");
-            // print!("{}\t", start.get());
+            let query_start = 0;
+            print!("{query_start}\t");
             // query end (0-based, open)
-            print!("{}\t", al_len);
-            // print!("{}\t", end.get() + 1);
+            print!("{}\t", query_start + query_len);
             // strand
             if record.flags().is_reverse_complemented() {
                 print!("-\t");
