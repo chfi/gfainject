@@ -196,7 +196,9 @@ impl PathIndex {
 
                 // let string = std::str::from_utf8(&steps[start..end]).unwrap();
                 let seg = &steps[start..end];
+                let last = seg.last().copied();
                 let is_rev = seg.last().copied() == Some(b'-');
+                // println!("+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}", Some(b'+'), Some(b'-'), last, is_rev);
 
                 let seg = &seg[..seg.len() - 1];
                 let seg_ix = btoi::btou::<usize>(seg)? - seg_id_range.0;
@@ -343,7 +345,6 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         let start = record.alignment_start().unwrap();
         let end = record.alignment_end().unwrap();
         let al_len = record.alignment_span();
-        // let al_len = end.get() - start.get();
 
         let start_pos = start.get() as u32;
         let start_rank = path_index.path_step_offsets[path_id].rank(start_pos);
@@ -359,16 +360,12 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             let mut path_len = 0;
             let mut path_str = String::new();
 
-            // let steps = steps.collect::<Vec<_>>();
-            // let step_count = steps.len();
-            // dbg!(step_count);
-
-            for (step_ix, step) in steps {
+            for (_step_ix, step) in steps {
                 use std::fmt::Write;
                 if step.reverse {
-                    write!(&mut path_str, ">")?;
-                } else {
                     write!(&mut path_str, "<")?;
+                } else {
+                    write!(&mut path_str, ">")?;
                 }
                 path_len += path_index.segment_lens[step.node as usize];
                 write!(
@@ -377,8 +374,6 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                     step.node + path_index.segment_id_range.0 as u32
                 )?;
             }
-
-            // let path_len_field = al_len;
 
             // query name
             print!("{}\t", read_name);
@@ -401,10 +396,11 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             // path length
             print!("{path_len}\t");
             // start on path
-            let start = 0usize;
-            print!("{start}\t");
+            let path_start = start_pos.checked_sub(step_offset).unwrap_or_default() as usize;
+            print!("{path_start}\t");
             // end on path
-            print!("{}\t", start + al_len);
+            let path_end = path_start + al_len;
+            print!("{path_end}\t");
             // number of matches
             {
                 use noodles::sam::record::cigar::{op::Kind, Op};
@@ -425,10 +421,8 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             print!("{al_len}\t");
             // mapping quality
             {
-                let score = record
-                    .mapping_quality()
-                    .map(|q| q.get())
-                    .unwrap_or(255u8);
+                let score =
+                    record.mapping_quality().map(|q| q.get()).unwrap_or(255u8);
                 print!("{score}");
             }
             println!();
