@@ -1,4 +1,5 @@
 use anyhow::Result;
+use noodles::sam::record::MappingQuality;
 use roaring::RoaringBitmap;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::prelude::*;
@@ -59,28 +60,20 @@ impl PathIndex {
 
         let start = pos_range.start;
         let end = pos_range.end;
-        let start_ix = offsets.rank(start);
-        let step_count = offsets.range_cardinality(start..=end);
-        let span = pos_range.end - pos_range.start;
-        println!("start: {start}\tend: {end}\tspan: {span}\tstep count: {step_count}");
-
-        // let first_step_start_pos =
-        //     offsets.select(start_ix as u32).unwrap_or(offsets.min().unwrap() as u32);
-        // let last_step_end_pos = offsets
-        //     .select((start_ix + step_count + 1) as u32)
-        //     .unwrap_or(offsets.max().unwrap() as u32 - 1);
-
-        // print!("wow! {}", last_step_end_pos - first_step_start_pos);
-        // println!("\tbut {}", end - start);
+        let start_rank = offsets.rank(start);
+        let end_rank = offsets.rank(end);
 
         let steps = {
             let path_steps = self.path_steps.get(path_id)?;
+
+            let skip = (start_rank as usize).checked_sub(1).unwrap_or_default();
+            let take = end_rank as usize - skip;
             let iter = path_steps
                 .iter()
-                .skip(start_ix as usize)
-                .take(1 + step_count as usize)
+                .skip(skip)
+                .take(take)
                 .enumerate()
-                .map(move |(ix, step)| (start_ix as usize + ix, step))
+                .map(move |(ix, step)| (skip + ix, step))
                 .fuse();
 
             Box::new(iter) as Box<dyn Iterator<Item = _>>
@@ -264,7 +257,6 @@ fn path_range_cmd(
         .get(&path_name)
         .expect("Path not found");
 
-
     let offsets = path_index.path_step_offsets.get(*path).unwrap();
 
     let start_rank = offsets.rank(start as u32);
@@ -282,7 +274,6 @@ fn path_range_cmd(
     for step in offsets.iter().skip(skip).take(take) {
         println!("{step}");
     }
-
 
     Ok(())
 }
@@ -349,11 +340,17 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             continue;
         };
 
-        // 1-based
         let start = record.alignment_start().unwrap();
         let end = record.alignment_end().unwrap();
         let al_len = record.alignment_span();
         // let al_len = end.get() - start.get();
+
+        let start_pos = start.get() as u32;
+        let start_rank = path_index.path_step_offsets[path_id].rank(start_pos);
+        let step_offset = start_pos
+            - path_index.path_step_offsets[path_id]
+                .select((start_rank - 1) as u32)
+                .unwrap();
 
         let pos_range = (start.get() as u32)..(1 + end.get() as u32);
         if let Some(steps) =
@@ -362,15 +359,11 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             let mut path_len = 0;
             let mut path_str = String::new();
 
-            // let path_start = steps.first_step_start_pos;
-            // let path_end = steps.last_step_end_pos;
-            // println!("path_start: {path_start}\tpath_end: {path_end}")  ;
+            // let steps = steps.collect::<Vec<_>>();
+            // let step_count = steps.len();
+            // dbg!(step_count);
 
-            let steps = steps.collect::<Vec<_>>();
-            let step_count = steps.len();
-            dbg!(step_count);
-
-            for &(step_ix, step) in &steps {
+            for (step_ix, step) in steps {
                 use std::fmt::Write;
                 if step.reverse {
                     write!(&mut path_str, ">")?;
@@ -429,21 +422,18 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 print!("{matches}\t");
             }
             // alignment block length
+            print!("{al_len}\t");
             // mapping quality
+            {
+                let score = record
+                    .mapping_quality()
+                    .map(|q| q.get())
+                    .unwrap_or(255u8);
+                print!("{score}");
+            }
             println!();
         } else {
         }
-
-        // let offset_map = &path_index.path_step_offsets[path_id];
-        // let steps = &path_index.path_steps[path_id];
-
-        // find start of alignment
-        // let start_ix = offset_map.rank(start.get() as u32 - 1);
-        // let end_ix = offset_map.rank(end.get() as u32 + 1);
-
-        // println!("{start}:{end}");
-        // println!("{start_ix} - {end_ix}: {} steps", end_ix - start_ix);
-        // println!("first step: {:?}", steps[start_ix as usize]);
     }
 
     Ok(())
