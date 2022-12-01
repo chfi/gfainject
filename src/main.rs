@@ -198,11 +198,23 @@ impl PathIndex {
                 let seg = &steps[start..end];
                 let last = seg.last().copied();
                 let is_rev = seg.last().copied() == Some(b'-');
-                // println!("+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}", Some(b'+'), Some(b'-'), last, is_rev);
 
                 let seg = &seg[..seg.len() - 1];
-                let seg_ix = btoi::btou::<usize>(seg)? - seg_id_range.0;
+                let seg_id = btoi::btou::<usize>(seg)?;
+                let seg_ix = seg_id - seg_id_range.0;
                 let len = seg_lens[seg_ix];
+
+                // if name == "chr1_chm13_103304997_103901127_0" {
+                    // let step_ix = parsed_steps.len();
+                    // println!("step: {step_ix}\tsegment: {seg_id}\tseg_ix: {seg_ix}\tpos: {pos}\tlen: {len}");
+                    // println!(
+                    //     "+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}",
+                    //     Some(b'+'),
+                    //     Some(b'-'),
+                    //     last,
+                    //     is_rev
+                    // );
+                // }
 
                 let step = PathStep {
                     node: seg_ix as u32,
@@ -260,6 +272,7 @@ fn path_range_cmd(
         .expect("Path not found");
 
     let offsets = path_index.path_step_offsets.get(*path).unwrap();
+    let steps = path_index.path_steps.get(*path).unwrap();
 
     let start_rank = offsets.rank(start as u32);
     let end_rank = offsets.rank(end as u32);
@@ -273,8 +286,35 @@ fn path_range_cmd(
     println!("------");
     let skip = (start_rank as usize).checked_sub(1).unwrap_or_default();
     let take = end_rank as usize - skip;
-    for step in offsets.iter().skip(skip).take(take) {
-        println!("{step}");
+
+    // let skip = 0;
+    // let take = 20;
+    for (step_ix, (pos, step)) in
+        offsets.iter().zip(steps).enumerate().skip(skip).take(take)
+    {
+        let node = step.node + path_index.segment_id_range.0 as u32;
+        println!("{step_ix}\t{node}\t{pos}");
+    }
+
+    println!("------------");
+
+    // let start_pos = start.get() as u32;
+    // let start_rank = path_index.path_step_offsets[path_id].rank(start_pos);
+    // let step_offset = start_pos
+    //     - path_index.path_step_offsets[path_id]
+    //         .select((start_rank - 1) as u32)
+    //         .unwrap();
+
+    // let pos_range = (start.get() as u32)..(1 + end.get() as u32);
+    let pos_range = (start as u32)..(end as u32);
+    if let Some(steps) = path_index.path_step_range_iter(&path_name, pos_range)
+    {
+        for (step_ix, step) in steps {
+            let pos = offsets.select(step_ix as u32).unwrap();
+            //
+            let node = step.node + path_index.segment_id_range.0 as u32;
+            println!("{step_ix}\t{node}\t{pos}");
+        }
     }
 
     Ok(())
@@ -314,7 +354,6 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
 
         header.build()
     };
-
     let ref_seqs = bam.read_reference_sequences()?;
 
     let m150 = {
@@ -333,6 +372,12 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         // let name = read_name.to_string();
         // dbg!(&name);
         // let name = std::str::from_utf8(read_name.to_)?;
+
+        // convenient for debugging
+        // let name: &str = read_name.as_ref();
+        // if name != "A00404:156:HV37TDSXX:4:1213:6370:23359" {
+        //     continue;
+        // }
 
         let Some(ref_name) = record.reference_sequence(&header).and_then(|s| s.ok().map(|s| s.name())) else {
             continue;
@@ -360,9 +405,18 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             let mut path_len = 0;
             let mut path_str = String::new();
 
-            for (_step_ix, step) in steps {
+            let mut steps = steps.collect::<Vec<_>>();
+
+            if record.flags().is_reverse_complemented() {
+                steps.reverse();
+            }
+
+            for (step_ix, step) in steps {
                 use std::fmt::Write;
-                if step.reverse {
+                // eprintln!("step_ix: {step_ix}");
+
+                let reverse = step.reverse ^ record.flags().is_reverse_complemented();
+                if reverse {
                     write!(&mut path_str, "<")?;
                 } else {
                     write!(&mut path_str, ">")?;
@@ -386,17 +440,18 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             // query end (0-based, open)
             print!("{}\t", query_start + query_len);
             // strand
-            if record.flags().is_reverse_complemented() {
-                print!("-\t");
-            } else {
+            // if record.flags().is_reverse_complemented() {
+                // print!("-\t");
+            // } else {
                 print!("+\t");
-            }
+            // }
             // path
             print!("{path_str}\t");
             // path length
             print!("{path_len}\t");
             // start on path
-            let path_start = start_pos.checked_sub(step_offset).unwrap_or_default() as usize;
+            let path_start =
+                start_pos.checked_sub(step_offset).unwrap_or_default() as usize;
             print!("{path_start}\t");
             // end on path
             let path_end = path_start + al_len;
