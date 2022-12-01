@@ -205,15 +205,15 @@ impl PathIndex {
                 let len = seg_lens[seg_ix];
 
                 // if name == "chr1_chm13_103304997_103901127_0" {
-                    // let step_ix = parsed_steps.len();
-                    // println!("step: {step_ix}\tsegment: {seg_id}\tseg_ix: {seg_ix}\tpos: {pos}\tlen: {len}");
-                    // println!(
-                    //     "+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}",
-                    //     Some(b'+'),
-                    //     Some(b'-'),
-                    //     last,
-                    //     is_rev
-                    // );
+                // let step_ix = parsed_steps.len();
+                // println!("step: {step_ix}\tsegment: {seg_id}\tseg_ix: {seg_ix}\tpos: {pos}\tlen: {len}");
+                // println!(
+                //     "+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}",
+                //     Some(b'+'),
+                //     Some(b'-'),
+                //     last,
+                //     is_rev
+                // );
                 // }
 
                 let step = PathStep {
@@ -415,7 +415,8 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 use std::fmt::Write;
                 // eprintln!("step_ix: {step_ix}");
 
-                let reverse = step.reverse ^ record.flags().is_reverse_complemented();
+                let reverse =
+                    step.reverse ^ record.flags().is_reverse_complemented();
                 if reverse {
                     write!(&mut path_str, "<")?;
                 } else {
@@ -431,27 +432,31 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
 
             // query name
             print!("{}\t", read_name);
+
             // query len
             let query_len = record.cigar().read_length();
             print!("{query_len}\t");
+
             // query start (0-based, closed)
             let query_start = 0;
             print!("{query_start}\t");
+
             // query end (0-based, open)
             print!("{}\t", query_start + query_len);
+
             // strand
             // if record.flags().is_reverse_complemented() {
-                // print!("-\t");
+            // print!("-\t");
             // } else {
-                print!("+\t");
+            print!("+\t");
             // }
+
             // path
             print!("{path_str}\t");
             // path length
             print!("{path_len}\t");
             // start on path
-            let path_start =
-                start_pos.checked_sub(step_offset).unwrap_or_default() as usize;
+            let path_start = step_offset as usize;
             print!("{path_start}\t");
             // end on path
             let path_end = path_start + al_len;
