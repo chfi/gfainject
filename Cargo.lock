@@ -104,7 +104,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "gfa-injection"
+name = "gfainject"
 version = "0.1.0"
 dependencies = [
  "anyhow",

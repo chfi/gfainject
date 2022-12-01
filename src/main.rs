@@ -362,6 +362,8 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         Cigar::try_from(vec![Op::new(Kind::Match, 150)])?
     };
 
+    let mut stdout = std::io::stdout().lock();
+
     for rec in bam.records() {
         let record = rec?;
 
@@ -379,7 +381,10 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         //     continue;
         // }
 
-        let Some(ref_name) = record.reference_sequence(&header).and_then(|s| s.ok().map(|s| s.name())) else {
+        let Some(ref_name) = record
+                    .reference_sequence(&header)
+                    .and_then(|s| s.ok().map(|s| s.name())) 
+        else {
             continue;
         };
 
@@ -431,36 +436,36 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             }
 
             // query name
-            print!("{}\t", read_name);
+            write!(stdout, "{}\t", read_name)?;
 
             // query len
             let query_len = record.cigar().read_length();
-            print!("{query_len}\t");
+            write!(stdout, "{query_len}\t")?;
 
             // query start (0-based, closed)
             let query_start = 0;
-            print!("{query_start}\t");
+            write!(stdout, "{query_start}\t")?;
 
             // query end (0-based, open)
-            print!("{}\t", query_start + query_len);
+            write!(stdout, "{}\t", query_start + query_len)?;
 
             // strand
             // if record.flags().is_reverse_complemented() {
             // print!("-\t");
             // } else {
-            print!("+\t");
+            write!(stdout, "+\t")?;
             // }
 
             // path
-            print!("{path_str}\t");
+            write!(stdout, "{path_str}\t")?;
             // path length
-            print!("{path_len}\t");
+            write!(stdout, "{path_len}\t")?;
             // start on path
             let path_start = step_offset as usize;
-            print!("{path_start}\t");
+            write!(stdout, "{path_start}\t")?;
             // end on path
             let path_end = path_start + al_len;
-            print!("{path_end}\t");
+            write!(stdout, "{path_end}\t")?;
             // number of matches
             {
                 use noodles::sam::record::cigar::{op::Kind, Op};
@@ -475,20 +480,22 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 }
                 let matches =
                     record.cigar().iter().map(match_len).sum::<usize>();
-                print!("{matches}\t");
+                write!(stdout, "{matches}\t")?;
             }
             // alignment block length
-            print!("{al_len}\t");
+            write!(stdout, "{al_len}\t")?;
             // mapping quality
             {
                 let score =
                     record.mapping_quality().map(|q| q.get()).unwrap_or(255u8);
-                print!("{score}");
+                write!(stdout, "{score}")?;
             }
-            println!();
+            writeln!(stdout)?;
         } else {
         }
     }
+
+    std::io::stdout().flush()?;
 
     Ok(())
 }
