@@ -331,12 +331,12 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         header.build()
     };
 
-    let ref_seqs = bam.read_reference_sequences()?;
+    // let ref_seqs = bam.read_reference_sequences()?;
 
-    for (key, val) in ref_seqs {
-        let len = val.length();
-        eprintln!("{key}\t{len}");
-    }
+    // for (key, val) in ref_seqs {
+    //     let len = val.length();
+    //     eprintln!("{key}\t{len}");
+    // }
 
 
     let mut stdout = std::io::stdout().lock();
