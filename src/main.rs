@@ -116,7 +116,7 @@ impl PathIndex {
                 continue;
             }
 
-            let mut fields = line.split(|&c| c == b'\t');
+            let mut fields = line_str.split(|c| c == '\t');
 
             let Some((name, seq)) = fields.next().and_then(|_type| {
             let name = fields.next()?;
@@ -125,15 +125,13 @@ impl PathIndex {
         }) else {
             continue;
         };
-
-            let name = std::str::from_utf8(name)?;
             let seg_id = name.parse::<usize>()?;
 
             seg_id_range.0 = seg_id_range.0.min(seg_id);
             seg_id_range.1 = seg_id_range.1.max(seg_id);
 
             name_map.insert(seg_id, seq.len());
-            seg_lens.push(seq.len());
+            seg_lens.push(len);
         }
 
         assert!(
@@ -179,53 +177,29 @@ impl PathIndex {
             path_names.insert(name.to_string(), path_steps.len());
 
             let mut pos = 0;
-            let mut step_str_pos = 0;
 
             let mut parsed_steps = Vec::new();
 
             let mut offsets = RoaringBitmap::new();
 
-            loop {
-                let Some(p) = memchr::memchr(b',', &steps[step_str_pos..])
-                else {
-                    break;
-                };
+            let steps = steps.split(|&c| c == b',');
 
-                let start = step_str_pos;
-                let end = step_str_pos + p;
-
-                // let string = std::str::from_utf8(&steps[start..end]).unwrap();
-                let seg = &steps[start..end];
-                let last = seg.last().copied();
-                let is_rev = seg.last().copied() == Some(b'-');
-
-                let seg = &seg[..seg.len() - 1];
+            for step in steps {
+                let (seg, orient) = step.split_at(step.len() - 1);
                 let seg_id = btoi::btou::<usize>(seg)?;
                 let seg_ix = seg_id - seg_id_range.0;
                 let len = seg_lens[seg_ix];
-
-                // if name == "chr1_chm13_103304997_103901127_0" {
-                // let step_ix = parsed_steps.len();
-                // println!("step: {step_ix}\tsegment: {seg_id}\tseg_ix: {seg_ix}\tpos: {pos}\tlen: {len}");
-                // println!(
-                //     "+: {:?}\t-: {:?}\tlast: {:?}\tis_rev: {}",
-                //     Some(b'+'),
-                //     Some(b'-'),
-                //     last,
-                //     is_rev
-                // );
-                // }
+                
+                let is_rev = orient == b"+";
 
                 let step = PathStep {
                     node: seg_ix as u32,
                     reverse: is_rev,
                 };
                 parsed_steps.push(step);
-                // parsed_steps.push(seg_ix as u32);
                 offsets.push(pos as u32);
-
+                
                 pos += len;
-                step_str_pos = end + 1;
             }
 
             path_steps.push(parsed_steps);
@@ -287,6 +261,8 @@ fn path_range_cmd(
     let skip = (start_rank as usize).checked_sub(1).unwrap_or_default();
     let take = end_rank as usize - skip;
 
+
+    println!("step_ix\tnode\tpos");
     // let skip = 0;
     // let take = 20;
     for (step_ix, (pos, step)) in
@@ -354,18 +330,23 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
 
         header.build()
     };
+
     let ref_seqs = bam.read_reference_sequences()?;
 
-    let m150 = {
-        use cigar::{op::Kind, Op};
-        use noodles::sam::record::{cigar, Cigar};
-        Cigar::try_from(vec![Op::new(Kind::Match, 150)])?
-    };
+    for (key, val) in ref_seqs {
+        let len = val.length();
+        eprintln!("{key}\t{len}");
+    }
+
 
     let mut stdout = std::io::stdout().lock();
 
     for rec in bam.records() {
         let record = rec?;
+
+        // if record.flags().is_reverse_complemented() {
+        //     continue;
+        // }
 
         let Some(read_name) = record.read_name() else {
             continue;
