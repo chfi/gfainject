@@ -94,7 +94,6 @@ impl PathIndex {
 
         let mut line_buf = Vec::new();
 
-        let mut name_map = BTreeMap::default();
         let mut seg_lens = Vec::new();
 
         let mut seg_id_range = (std::usize::MAX, 0usize);
@@ -119,18 +118,18 @@ impl PathIndex {
             let mut fields = line_str.split(|c| c == '\t');
 
             let Some((name, seq)) = fields.next().and_then(|_type| {
-            let name = fields.next()?;
-            let seq = fields.next()?;
-            Some((name, seq ))
-        }) else {
-            continue;
-        };
+                let name = fields.next()?.trim();
+                let seq = fields.next()?.trim();
+                Some((name, seq))
+            }) else {
+                continue;
+            };
             let seg_id = name.parse::<usize>()?;
 
             seg_id_range.0 = seg_id_range.0.min(seg_id);
             seg_id_range.1 = seg_id_range.1.max(seg_id);
 
-            name_map.insert(seg_id, seq.len());
+            let len = seq.len();
             seg_lens.push(len);
         }
 
@@ -331,7 +330,7 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         header.build()
     };
 
-    // let ref_seqs = bam.read_reference_sequences()?;
+    let ref_seqs = bam.read_reference_sequences()?;
 
     // for (key, val) in ref_seqs {
     //     let len = val.length();
@@ -401,12 +400,12 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 use std::fmt::Write;
                 // eprintln!("step_ix: {step_ix}");
 
-                let reverse =
-                    step.reverse ^ record.flags().is_reverse_complemented();
-                if reverse {
-                    write!(&mut path_str, "<")?;
-                } else {
+                // let reverse = step.reverse;
+                let forward = step.reverse ^ record.flags().is_reverse_complemented();
+                if forward {
                     write!(&mut path_str, ">")?;
+                } else {
+                    write!(&mut path_str, "<")?;
                 }
                 path_len += path_index.segment_lens[step.node as usize];
                 write!(
