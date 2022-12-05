@@ -383,7 +383,7 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 .select((start_rank - 1) as u32)
                 .unwrap();
 
-        let pos_range = (start.get() as u32)..(1 + end.get() as u32);
+        let pos_range = (start.get() as u32)..(end.get() as u32);
         if let Some(steps) =
             path_index.path_step_range_iter(ref_name.as_str(), pos_range)
         {
