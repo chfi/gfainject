@@ -461,18 +461,17 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                     record.cigar().iter().map(match_len).sum::<usize>();
                 write!(stdout, "{matches}\t")?;
             }
-            // alignment block length
+          // alignment block length
             write!(stdout, "{al_len}\t")?;
             // mapping quality
             {
                 let score =
                     record.mapping_quality().map(|q| q.get()).unwrap_or(255u8);
-                write!(stdout, "{score}")?;
+                write!(stdout, "{score}\t")?;
             }
            
-           
             // cigar
-            
+            write!(stdout, "cg:Z:{}", record.cigar())?;
             
             writeln!(stdout)?;
         } else {
