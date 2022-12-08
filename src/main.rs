@@ -1,7 +1,6 @@
 use anyhow::Result;
-use noodles::sam::record::MappingQuality;
 use roaring::RoaringBitmap;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io::prelude::*;
 use std::{io::BufReader, path::PathBuf};
 
@@ -387,7 +386,6 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         if let Some(steps) =
             path_index.path_step_range_iter(ref_name.as_str(), pos_range)
         {
-            let mut path_len = 0;
             let mut path_str = String::new();
 
             let mut steps = steps.collect::<Vec<_>>();
@@ -407,13 +405,14 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 } else {
                     write!(&mut path_str, "<")?;
                 }
-                path_len += path_index.segment_lens[step.node as usize];
                 write!(
                     &mut path_str,
                     "{}",
                     step.node + path_index.segment_id_range.0 as u32
                 )?;
             }
+           
+            let path_len = record.cigar().alignment_span();
 
             // query name
             write!(stdout, "{}\t", read_name)?;
@@ -470,6 +469,11 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                     record.mapping_quality().map(|q| q.get()).unwrap_or(255u8);
                 write!(stdout, "{score}")?;
             }
+           
+           
+            // cigar
+            
+            
             writeln!(stdout)?;
         } else {
         }
