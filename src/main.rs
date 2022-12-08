@@ -187,7 +187,7 @@ impl PathIndex {
                 let seg_id = btoi::btou::<usize>(seg)?;
                 let seg_ix = seg_id - seg_id_range.0;
                 let len = seg_lens[seg_ix];
-                
+
                 let is_rev = orient == b"+";
 
                 let step = PathStep {
@@ -196,7 +196,7 @@ impl PathIndex {
                 };
                 parsed_steps.push(step);
                 offsets.push(pos as u32);
-                
+
                 pos += len;
             }
 
@@ -217,7 +217,7 @@ impl PathIndex {
 
 fn main() -> Result<()> {
     let Ok(args) = parse_args() else {
-        println!("USAGE: `gfa-injection --gfa <gfa-path> --bam <bam-path>`");
+        println!("USAGE: `gfainject --gfa <gfa-path> --bam <bam-path>`");
         return Ok(());
     };
 
@@ -362,7 +362,7 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
 
         let Some(ref_name) = record
                     .reference_sequence(&header)
-                    .and_then(|s| s.ok().map(|s| s.name())) 
+                    .and_then(|s| s.ok().map(|s| s.name()))
         else {
             continue;
         };
@@ -411,7 +411,7 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                     step.node + path_index.segment_id_range.0 as u32
                 )?;
             }
-           
+
             let path_len = record.cigar().alignment_span();
 
             // query name
@@ -469,10 +469,10 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                     record.mapping_quality().map(|q| q.get()).unwrap_or(255u8);
                 write!(stdout, "{score}\t")?;
             }
-           
+
             // cigar
             write!(stdout, "cg:Z:{}", record.cigar())?;
-            
+
             writeln!(stdout)?;
         } else {
         }
