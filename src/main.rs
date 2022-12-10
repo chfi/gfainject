@@ -374,15 +374,17 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
         let start = record.alignment_start().unwrap();
         let end = record.alignment_end().unwrap();
         let al_len = record.alignment_span();
+        //assert!(end - start == al_len);
 
-        let start_pos = start.get() as u32;
+        let start_pos = (start.get()-1) as u32;
         let start_rank = path_index.path_step_offsets[path_id].rank(start_pos);
-        let step_offset = start_pos
+        //eprintln!("start_rank = {}", start_rank);
+        let mut step_offset = start_pos
             - path_index.path_step_offsets[path_id]
                 .select((start_rank - 1) as u32)
                 .unwrap();
 
-        let pos_range = (start.get() as u32)..(end.get() as u32);
+        let pos_range = ((start.get()-1) as u32)..((end.get()-1) as u32);
         if let Some(steps) =
             path_index.path_step_range_iter(ref_name.as_str(), pos_range)
         {
@@ -394,7 +396,11 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 steps.reverse();
             }
 
-            for (step_ix, step) in steps {
+            let mut path_len: usize = 0;
+
+            for (_step_ix, step) in steps {
+                // path length is given by the length of nodes in the graph
+                path_len += path_index.segment_lens[(step.node) as usize];
                 use std::fmt::Write;
                 // eprintln!("step_ix: {step_ix}");
 
@@ -412,7 +418,12 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
                 )?;
             }
 
-            let path_len = record.cigar().alignment_span();
+            if record.flags().is_reverse_complemented() {
+                // start node offset changes
+                //println!("is rev {} {} {}", path_len, step_offset, record.cigar().alignment_span());
+                let last_bit = path_len as u32 - (step_offset as u32 + record.cigar().alignment_span() as u32 - 1);
+                step_offset = last_bit;
+            }
 
             // query name
             write!(stdout, "{}\t", read_name)?;
