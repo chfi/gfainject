@@ -371,6 +371,11 @@ fn main_cmd(path_index: PathIndex, bam_path: PathBuf) -> Result<()> {
             continue;
         };
 
+        // skip the record if there is no alignment information
+        if record.alignment_start().is_none() || record.alignment_end().is_none() {
+            continue;
+        }
+
         let start = record.alignment_start().unwrap();
         let end = record.alignment_end().unwrap();
         let al_len = record.alignment_span();
